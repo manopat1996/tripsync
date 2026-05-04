@@ -287,4 +287,26 @@
                         <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-center gap-6">
                             <div className="flex-1 overflow-hidden">
                                 <p className="text-[10px] font-black text-blue-500 uppercase">Share this Room Link</p>
-                                <input readOnly value={window.location.href} className="text-xs w-full font-mono text-slate-
+                                <input readOnly value={window.location.href} className="text-xs w-full font-mono text-slate-500 bg-transparent outline-none cursor-pointer mt-1" onClick={e => {e.target.select(); document.execCommand('copy'); alert('Room link copied to clipboard!'); }} />
+                            </div>
+                            {isLeader ? (
+                                <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl flex items-center gap-4">
+                                    <p className="text-[11px] text-emerald-800 font-medium"><b>Leader Tip:</b> Advanced to the next phase only after everyone has submitted.</p>
+                                    <button onClick={() => updateTrip({ phase: trip.phase + 1 })} className="bg-emerald-600 text-white px-5 py-2 rounded-lg font-bold text-xs whitespace-nowrap shadow-lg">NEXT PHASE →</button>
+                                </div>
+                            ) : (
+                                <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl">
+                                    <p className="text-[11px] text-blue-800 italic font-medium">Logged in as Member. Please wait for your Leader to advance the phase.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TripSyncApp />);
+    </script>
+</body>
+</html>
