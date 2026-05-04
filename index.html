@@ -1,39 +1,27 @@
-Great catch. The console doesn't lie: Uncaught RangeError: Invalid time value.
-
-This error happens because the app is trying to calculate a "Winning Date
-Window" before everyone has entered their dates, or it's trying to format a date
-that isn't valid yet. This crash "breaks" the React engine and results in the
-white screen.
-
-I have fixed the date logic to be much more defensive. It will now only attempt
-to format dates if they are 100% valid.
-
-The Final, Bulletproof Code (Replace your index.html with this)
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TripSync | Decision Tool</title>
-    
-    <!-- Robust CDNs -->
+    <title>TripSync | Group Decision Engine</title>
+    <!-- Reliable CDNs -->
     <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <!-- Firebase Compat SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #1e293b; }
         .card { background: white; border-radius: 20px; box-shadow: 0 4px 20px -5px rgba(0,0,0,0.08); border: 1px solid #f1f5f9; }
-        .input-p { border: 2px solid #f1f5f9; padding: 12px; border-radius: 12px; width: 100%; outline: none; }
-        .btn-blue { background: #2563eb; color: white; padding: 12px 24px; border-radius: 12px; font-weight: 700; transition: all 0.2s; }
-        .guide-bubble { background: #eff6ff; border: 1px solid #dbeafe; padding: 12px 16px; border-radius: 12px; font-size: 13px; color: #1e40af; }
+        .guide-bubble { background: #eff6ff; border: 1px solid #dbeafe; padding: 12px 16px; border-radius: 12px; font-size: 13px; color: #1e40af; line-height: 1.5; }
+        .guide-bubble b { color: #1d4ed8; }
+        .btn-blue { background: #2563eb; color: white; padding: 12px 24px; border-radius: 12px; font-weight: 700; transition: all 0.2s; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2); }
+        .btn-blue:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .input-pill { border: 2px solid #f1f5f9; padding: 12px; border-radius: 12px; width: 100%; outline: none; }
+        .input-pill:focus { border-color: #3b82f6; }
     </style>
 </head>
 <body>
@@ -62,9 +50,10 @@ The Final, Bulletproof Code (Replace your index.html with this)
 
             useEffect(() => {
                 if (!roomID) return;
-                return db.collection("rooms").doc(roomID).onSnapshot(doc => {
+                const unsub = db.collection("rooms").doc(roomID).onSnapshot(doc => {
                     if (doc.exists) setTrip(doc.data());
-                }, err => console.error("Firebase Error:", err));
+                });
+                return () => unsub();
             }, [roomID]);
 
             const updateTrip = (updates) => {
@@ -89,7 +78,6 @@ The Final, Bulletproof Code (Replace your index.html with this)
 
             const dates = useMemo(() => {
                 const r = Object.values(trip?.availability || {});
-                // Only calculate if everyone has entered something
                 if (!trip?.members || r.length < trip.members.length || r.length === 0) return null;
 
                 const startDates = r.map(x => new Date(x.start)).filter(d => !isNaN(d.getTime()));
@@ -102,23 +90,20 @@ The Final, Bulletproof Code (Replace your index.html with this)
 
                 if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
 
-                return { 
-                    ok: start <= end, 
-                    s: start.toISOString().split('T')[0], 
-                    e: end.toISOString().split('T')[0] 
-                };
+                return { ok: start <= end, s: start.toLocaleDateString(), e: end.toLocaleDateString() };
             }, [trip?.availability, trip?.members]);
 
             const winner = trip?.destinations?.length ? [...trip.destinations].sort((a,b) => getScore(b.id) - getScore(a.id))[0] : null;
 
             if (!roomID) return (
-                <div className="min-h-screen flex items-center justify-center p-6 bg-slate-900">
-                    <div className="card p-10 max-w-lg w-full">
+                <div className="min-h-screen flex items-center justify-center p-6 bg-slate-900 text-white">
+                    <div className="card p-10 max-w-lg w-full text-slate-900">
                         <h1 className="text-4xl font-black text-blue-600 mb-2 italic tracking-tighter">TripSync</h1>
-                        <p className="text-slate-500 mb-8 italic">MBA Decision Engine</p>
+                        <p className="text-slate-500 mb-8 font-medium italic">MBA Group Decision Engine</p>
+                        <div className="guide-bubble mb-8"><b>Trip Leader:</b> Enter your trip name and member names to initialize the shared room.</div>
                         <div className="space-y-4">
-                            <input id="tName" placeholder="Trip Name" className="input-p" />
-                            <textarea id="mList" placeholder="Members (comma separated)" className="input-p h-24" />
+                            <input id="tName" placeholder="Trip Name (e.g. Kyoto 2024)" className="input-pill" />
+                            <textarea id="mList" placeholder="Member names separated by commas" className="input-pill h-24" />
                             <button onClick={async () => {
                                 const id = Math.random().toString(36).substring(7);
                                 const name = document.getElementById('tName').value;
@@ -137,10 +122,11 @@ The Final, Bulletproof Code (Replace your index.html with this)
             if (!user && trip) return (
                 <div className="min-h-screen flex items-center justify-center p-6">
                     <div className="card p-10 max-w-sm w-full text-center">
-                        <h2 className="text-2xl font-bold mb-6 italic">Who are you?</h2>
+                        <h2 className="text-2xl font-bold mb-4 italic">Identify Yourself</h2>
+                        <div className="guide-bubble mb-6 text-left">Select your name to track your inputs and votes correctly.</div>
                         <div className="space-y-2">
                             {trip.members.map(m => (
-                                <button key={m} onClick={() => { setUser(m); localStorage.setItem('ts_user', m); }} className="w-full p-4 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-xl font-bold border transition-all">
+                                <button key={m} onClick={() => { setUser(m); localStorage.setItem('ts_user', m); }} className="w-full p-4 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-xl font-bold transition-all shadow-sm">
                                     {m}
                                 </button>
                             ))}
@@ -149,62 +135,88 @@ The Final, Bulletproof Code (Replace your index.html with this)
                 </div>
             );
 
-            if (!trip) return <div className="p-20 text-center font-bold">Connecting...</div>;
+            if (!trip) return <div className="p-20 text-center font-bold">Connecting to Cloud Firestore...</div>;
 
             return (
-                <div className="min-h-screen pb-40">
-                    <nav className="bg-white border-b px-6 py-4 flex justify-between items-center sticky top-0 z-50 shadow-sm">
-                        <h2 className="font-black text-blue-600 italic text-xl">TripSync</h2>
-                        <div className="text-right">
-                            <p className="text-[10px] font-bold text-slate-400">USER: {user}</p>
-                            <button onClick={() => { localStorage.clear(); location.reload(); }} className="text-[10px] text-blue-500 font-bold uppercase underline">Switch User</button>
+                <div className="min-h-screen pb-48">
+                    <nav className="bg-white/80 backdrop-blur-md border-b px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+                        <div>
+                            <h2 className="font-black text-blue-600 italic text-xl">TripSync</h2>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{trip.name}</p>
+                        </div>
+                        <div className="text-right flex items-center gap-4">
+                            <div className="hidden sm:block">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Current User</p>
+                                <p className="text-xs font-black text-blue-600">{user} {isLeader && "(Leader)"}</p>
+                            </div>
+                            <button onClick={() => { localStorage.clear(); location.reload(); }} className="p-2 bg-slate-100 rounded-lg hover:bg-red-50" title="Switch User">👤</button>
                         </div>
                     </nav>
 
-                    <main className="max-w-2xl mx-auto mt-10 px-6">
+                    <main className="max-w-3xl mx-auto mt-10 px-6">
+                        
+                        {/* PHASE 1: DISCOVERY */}
                         {trip.phase === 1 && (
                             <div className="space-y-8">
-                                <div className="guide-bubble"><b>Step 1:</b> Suggest cities and enter your travel window.</div>
+                                <div className="guide-bubble"><b>Phase 1: Discovery.</b> Everyone should suggest destinations and enter their travel windows. We'll track submissions in real-time.</div>
                                 <div className="card p-8">
-                                    <h4 className="font-bold mb-3">📍 Suggested Cities</h4>
-                                    <input placeholder="Type city and hit Enter..." className="input-p" onKeyDown={e => {
+                                    <h4 className="font-bold text-lg mb-4 flex items-center gap-2">📍 Suggested Cities</h4>
+                                    <input placeholder="Add a city and press Enter..." className="input-pill" onKeyDown={e => {
                                         if(e.key === 'Enter' && e.target.value) {
                                             updateTrip({ destinations: [...(trip.destinations || []), {id: Date.now(), name: e.target.value}] });
                                             e.target.value = '';
                                         }
                                     }} />
                                     <div className="flex flex-wrap gap-2 mt-4">
-                                        {trip.destinations?.map(d => <span key={d.id} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold border border-blue-100">{d.name}</span>)}
+                                        {trip.destinations?.map(d => <span key={d.id} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold border border-blue-100 italic">📍 {d.name}</span>)}
                                     </div>
                                 </div>
                                 <div className="card p-8">
-                                    <h4 className="font-bold mb-4 text-center">📅 When can you travel?</h4>
-                                    <div className="flex gap-4">
-                                        <input type="date" className="input-p text-xs" onChange={e => updateTrip({ availability: {...trip.availability, [user]: {...trip.availability[user], start: e.target.value}} })} />
-                                        <input type="date" className="input-p text-xs" onChange={e => updateTrip({ availability: {...trip.availability, [user]: {...trip.availability[user], end: e.target.value}} })} />
+                                    <h4 className="font-bold text-lg mb-4 text-center">📅 Your Availability</h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input type="date" className="input-pill text-xs" value={trip.availability[user]?.start || ''} onChange={e => updateTrip({ availability: {...trip.availability, [user]: {...trip.availability[user], start: e.target.value}} })} />
+                                        <input type="date" className="input-pill text-xs" value={trip.availability[user]?.end || ''} onChange={e => updateTrip({ availability: {...trip.availability, [user]: {...trip.availability[user], end: e.target.value}} })} />
+                                    </div>
+                                    <div className="mt-8 border-t pt-6">
+                                        <p className="text-[10px] font-black text-slate-300 uppercase mb-3">Submission Tracker</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {trip.members.map(m => (
+                                                <div key={m} className={`flex justify-between items-center p-2 rounded-lg text-xs font-bold ${trip.availability[m] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}>
+                                                    <span>{m}</span>
+                                                    <span>{trip.availability[m] ? "✅ Done" : "⏳ Pending"}</span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         )}
 
+                        {/* PHASE 2: DECISION MATRIX */}
                         {trip.phase === 2 && (
-                            <div className="space-y-4">
-                                <div className="guide-bubble"><b>Step 2:</b> Rate the destinations (1 to 5).</div>
+                            <div className="space-y-6">
+                                <div className="guide-bubble"><b>Phase 2: Voting.</b> Rate destinations 1-5. <br/><b>Scoring logic:</b> Extremes (1 & 5) carry ±2.0 weight. Moderates (2 & 4) carry ±1.0. Neutral (3) carries +0.5.</div>
                                 {trip.destinations?.map(d => (
-                                    <div key={d.id} className="card p-6">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h4 className="text-xl font-bold italic">{d.name}</h4>
-                                            <span className="text-blue-600 font-black">Score: {getScore(d.id)}</span>
+                                    <div key={d.id} className="card p-6 border-l-8 border-blue-600">
+                                        <div className="flex justify-between items-center mb-6">
+                                            <h4 className="text-2xl font-black italic">{d.name}</h4>
+                                            <div className="text-right">
+                                                <p className="text-[10px] font-bold text-slate-400">SCORE</p>
+                                                <p className="font-mono text-2xl font-black text-blue-600 leading-none">{getScore(d.id)}</p>
+                                            </div>
                                         </div>
-                                        <div className="grid grid-cols-4 gap-2">
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                                             {['Fun', 'Food', 'Cost', 'Weather'].map(m => (
-                                                <select key={m} className="w-full border rounded-lg p-2 text-xs font-bold bg-slate-50" value={trip.votes?.[d.id]?.[user]?.[m] || 0} onChange={e => {
-                                                    const v = trip.votes || {}; if(!v[d.id]) v[d.id] = {}; if(!v[d.id][user]) v[d.id][user] = {};
-                                                    v[d.id][user][m] = e.target.value; updateTrip({ votes: v });
-                                                }}>
-                                                    <option value="0">{m}</option>
-                                                    {[5,4,3,2,1].map(n => <option key={n} value={n}>{n}</option>)}
-                                                </select>
+                                                <div key={m}>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase">{m}</label>
+                                                    <select className="w-full border rounded-lg p-2 text-sm font-bold bg-slate-50 mt-1" value={trip.votes?.[d.id]?.[user]?.[m] || 0} onChange={e => {
+                                                        const v = trip.votes || {}; if(!v[d.id]) v[d.id] = {}; if(!v[d.id][user]) v[d.id][user] = {};
+                                                        v[d.id][user][m] = e.target.value; updateTrip({ votes: v });
+                                                    }}>
+                                                        <option value="0">-</option>
+                                                        {[5,4,3,2,1].map(n => <option key={n} value={n}>{n}</option>)}
+                                                    </select>
+                                                </div>
                                             ))}
                                         </div>
                                     </div>
@@ -212,46 +224,67 @@ The Final, Bulletproof Code (Replace your index.html with this)
                             </div>
                         )}
 
-                        {trip.phase >= 3 && (
-                            <div className="card p-12 text-center shadow-xl">
-                                <div className="inline-block px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black mb-4 uppercase">Winner Found</div>
-                                <h2 className="text-5xl font-black italic text-slate-900 tracking-tighter mb-4">{winner?.name}</h2>
-                                <div className="p-6 bg-slate-50 rounded-2xl border flex flex-col items-center">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Winning Window</p>
-                                    <p className="text-lg font-bold">
-                                        {dates ? `${dates.s} — ${dates.e}` : "Calculation Pending..."}
-                                    </p>
+                        {/* PHASE 3: LOGISTICS */}
+                        {trip.phase === 3 && (
+                            <div className="space-y-6">
+                                <div className="guide-bubble"><b>Phase 3: Logistics.</b> Kyoto won! Add lodging options below for the group to vote on.</div>
+                                <div className="card p-10 bg-blue-600 text-white text-center shadow-xl shadow-blue-200">
+                                    <p className="text-[10px] font-black opacity-60 uppercase tracking-widest">Winning Selection</p>
+                                    <h2 className="text-5xl font-black italic my-2">{winner?.name}</h2>
+                                    <div className="inline-block bg-white/20 backdrop-blur px-4 py-1 rounded-full text-xs font-bold">
+                                        {dates?.ok ? `Overlapping Window: ${dates.s} - ${dates.e}` : "⚠️ Partial Conflict: Choose best overlapping dates"}
+                                    </div>
                                 </div>
+                                <div className="card p-8">
+                                    <h4 className="font-bold mb-4">🏠 Proposed Lodging</h4>
+                                    <input placeholder="Add hotel name and press Enter..." className="input-pill mb-4" onKeyDown={e => {
+                                        if(e.key === 'Enter' && e.target.value) {
+                                            updateTrip({ logistics: {...trip.logistics, hotels: [...(trip.logistics?.hotels || []), {id: Date.now(), val: e.target.value}]} });
+                                            e.target.value = '';
+                                        }
+                                    }} />
+                                    <div className="space-y-2">
+                                        {trip.logistics?.hotels?.map(h => (
+                                            <div key={h.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-xl border border-transparent hover:border-blue-100 transition-all">
+                                                <span className="font-bold text-sm">{h.val}</span>
+                                                <button onClick={() => updateTrip({ logVotes: {...trip.logVotes, hotels: {...trip.logVotes?.hotels, [user]: h.id}} })} className={`px-4 py-2 rounded-lg text-xs font-bold ${trip.logVotes?.hotels?.[user] === h.id ? 'bg-blue-600 text-white' : 'bg-white border text-slate-500'}`}>
+                                                    {trip.logVotes?.hotels?.[user] === h.id ? 'Voted' : 'Vote'}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* PHASE 4: FINAL */}
+                        {trip.phase === 4 && (
+                            <div className="card overflow-hidden text-center shadow-2xl">
+                                <div className="p-12 bg-slate-900 text-white">
+                                    <h2 className="text-6xl font-black italic text-blue-500 tracking-tighter mb-2">{winner?.name}</h2>
+                                    <p className="font-bold text-slate-400 uppercase text-xs tracking-widest">Final Itinerary Prepared for {trip.name}</p>
+                                </div>
+                                <div className="p-10 grid md:grid-cols-2 gap-8 text-left">
+                                    <div className="p-6 bg-slate-50 rounded-2xl border flex flex-col justify-center">
+                                        <p className="text-[10px] font-black text-blue-500 uppercase mb-2 tracking-widest">Lodging</p>
+                                        <p className="text-xl font-bold">{trip.logistics?.hotels?.find(h => h.id === Object.values(trip.logVotes?.hotels || {})[0])?.val || 'To be finalized'}</p>
+                                    </div>
+                                    <div className="p-6 bg-slate-50 rounded-2xl border flex flex-col justify-center">
+                                        <p className="text-[10px] font-black text-blue-500 uppercase mb-2 tracking-widest">Confirmed Dates</p>
+                                        <p className="text-xl font-bold">{dates?.s} — {dates?.e}</p>
+                                    </div>
+                                </div>
+                                <div className="p-6 bg-white border-t flex justify-center flex-wrap gap-2">
+                                    {trip.members.map(m => <span key={m} className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[10px] font-black">👤 {m}</span>)}
+                                </div>
+                                <button onClick={() => window.print()} className="mb-10 mt-4 text-[10px] font-black text-slate-300 hover:text-blue-600 transition-colors uppercase tracking-widest">Download PDF Summary</button>
                             </div>
                         )}
                     </main>
 
-                    <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-between items-center shadow-2xl z-50">
-                        <div className="text-[10px] text-slate-400 font-mono truncate mr-4">{window.location.href}</div>
-                        {isLeader && trip && (
-                            <button onClick={() => updateTrip({ phase: trip.phase + 1 })} className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-xs">NEXT PHASE</button>
-                        )}
-                    </div>
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<TripSyncApp />);
-    </script>
-</body>
-</html>
-
-Why this fixes the error:
-
-1.  Date Validation: I added .filter(d => !isNaN(d.getTime())). This removes any
-    "broken" dates before the app tries to calculate the window.
-2.  Safety Checks: I added if (isNaN(start.getTime()) || isNaN(end.getTime()))
-    return null;. This stops the app from calling .toISOString() on an invalid
-    date, which was the specific cause of your "RangeError" crash.
-
-Final Verification Step:
-
-Once you push this to GitHub, wait for the Actions circle to turn green, then
-refresh the page. It should instantly move past the white screen to the "Create
-Trip" or "Choose Name" screen.
+                    {/* COMMAND CENTER (Fixed Footer) */}
+                    <div className="fixed bottom-0 left-0 right-0 bg-white border-t-4 border-blue-600 p-4 shadow-2xl z-50">
+                        <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-center gap-6">
+                            <div className="flex-1 overflow-hidden">
+                                <p className="text-[10px] font-black text-blue-500 uppercase">Share this Room Link</p>
+                                <input readOnly value={window.location.href} className="text-xs w-full font-mono text-slate-
