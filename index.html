@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TripSync Pro | MBA Prototype</title>
+    <title>TripSync Pro | MBA Decision Engine</title>
     <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
@@ -14,12 +14,11 @@
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #1e293b; }
         .card { background: white; border-radius: 24px; box-shadow: 0 4px 25px -5px rgba(0,0,0,0.06); border: 1px solid #f1f5f9; }
-        .guide-bubble { background: #eff6ff; border: 1px solid #dbeafe; padding: 12px 16px; border-radius: 16px; font-size: 13px; color: #1e40af; }
+        .guide-bubble { background: #eff6ff; border: 1px solid #dbeafe; padding: 12px 16px; border-radius: 12px; font-size: 13px; color: #1e40af; }
         .btn-blue { background: #2563eb; color: white; padding: 12px 24px; border-radius: 14px; font-weight: 700; transition: 0.2s; }
         .btn-blue:hover { background: #1d4ed8; transform: translateY(-1px); }
         .input-pill { border: 2px solid #f1f5f9; padding: 10px; border-radius: 12px; width: 100%; outline: none; }
         .input-pill:focus { border-color: #3b82f6; }
-        .phase-badge { background: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 99px; font-size: 10px; font-weight: 800; }
     </style>
 </head>
 <body>
@@ -45,9 +44,8 @@
             const [user, setUser] = useState(localStorage.getItem('ts_user') || '');
             const [trip, setTrip] = useState(null);
             
-            // Bias Control: Local state for voting before submit
+            // Temporary voting state for anti-bias
             const [tempVotes, setTempVotes] = useState({});
-            const [submittedVotes, setSubmittedVotes] = useState(false);
 
             useEffect(() => {
                 if (!roomID) return;
@@ -58,6 +56,13 @@
 
             const isLeader = trip?.leader === user;
             const updateTrip = (updates) => db.collection("rooms").doc(roomID).set(updates, { merge: true });
+
+            // PERSISTENCE CHECK: Has the user already voted?
+            const hasUserVoted = useMemo(() => {
+                if (!trip?.votes || !trip.destinations?.length) return false;
+                const firstDestId = trip.destinations[0].id;
+                return !!trip.votes[firstDestId]?.[user];
+            }, [trip?.votes, user, trip?.destinations]);
 
             // SCORING LOGIC
             const calculateScore = (destId) => {
@@ -76,7 +81,7 @@
                 return score;
             };
 
-            // AUTO-OVERLAP CALCULATION
+            // OVERLAP CALCULATION
             const overlap = useMemo(() => {
                 const r = Object.values(trip?.availability || {});
                 if (!trip?.members || r.length < trip.members.length) return null;
@@ -93,8 +98,8 @@
             if (!roomID) return (
                 <div className="min-h-screen flex items-center justify-center p-6 bg-slate-900">
                     <div className="card p-10 max-w-lg w-full text-slate-900">
-                        <h1 className="text-4xl font-black text-blue-600 mb-2 italic tracking-tighter">TripSync <span className="text-slate-400 not-italic">Pro</span></h1>
-                        <p className="text-slate-500 mb-8 font-medium">Collaborative Decision Engine</p>
+                        <h1 className="text-4xl font-black text-blue-600 mb-2 italic">TripSync</h1>
+                        <p className="text-slate-500 mb-8 font-medium italic">MBA Prototype v2.0</p>
                         <div className="space-y-4">
                             <input id="tName" placeholder="Trip Name" className="input-pill" />
                             <textarea id="mList" placeholder="Names (e.g. Mano, Alex, Sarah)" className="input-pill h-24" />
@@ -105,7 +110,7 @@
                                 if(!name || m.length < 1) return alert("Fill all fields");
                                 await db.collection("rooms").doc(id).set({ name, members: m, leader: m[0], phase: 1, destinations: [], availability: {}, votes: {}, logistics: {hotels:[], flights:[]}, logVotes: {hotels:{}, flights:{}}, finalDates: null });
                                 window.location.hash = id; setRoomID(id);
-                            }} className="btn-blue w-full">Initialize Shared Room</button>
+                            }} className="btn-blue w-full">Initialize Room</button>
                         </div>
                     </div>
                 </div>
@@ -126,31 +131,27 @@
                 </div>
             );
 
-            if (!trip) return <div className="p-20 text-center font-bold">Syncing Room...</div>;
+            if (!trip) return <div className="p-20 text-center font-bold">Connecting...</div>;
 
             return (
                 <div className="min-h-screen pb-48">
                     <nav className="bg-white border-b px-6 py-4 flex justify-between items-center sticky top-0 z-50">
-                        <div>
-                            <h2 className="font-black text-blue-600 italic text-xl">TripSync</h2>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">{trip.name}</p>
-                        </div>
+                        <h2 className="font-black text-blue-600 italic text-xl leading-none">TripSync</h2>
                         <div className="flex items-center gap-4">
-                            <span className="phase-badge">Phase {trip.phase}</span>
+                            <span className="text-[10px] font-bold text-slate-400">LOGGED IN AS {user}</span>
                             <button onClick={() => {localStorage.clear(); location.reload();}} className="p-2 bg-slate-100 rounded-xl">👤</button>
                         </div>
                     </nav>
 
                     <main className="max-w-2xl mx-auto mt-10 px-6">
                         
-                        {/* PHASE 1: INPUTS */}
+                        {/* PHASE 1: DISCOVERY */}
                         {trip.phase === 1 && (
                             <div className="space-y-8 animate-in fade-in duration-500">
-                                <div className="guide-bubble"><b>Phase 1: Discovery.</b> Suggest destinations and enter your dates. Submission is marked "Done" only after both dates are selected.</div>
+                                <div className="guide-bubble">Suggest cities and dates. Press <b>ENTER</b> to add cities. Ready status turns green only after <b>both</b> dates are selected.</div>
                                 <div className="card p-8">
-                                    <h4 className="font-bold text-lg mb-2 italic">📍 Suggested Cities</h4>
-                                    <p className="text-[10px] text-blue-500 font-bold mb-4 uppercase">Type city name and press ENTER to add</p>
-                                    <input placeholder="e.g. Bangkok" className="input-pill" onKeyDown={e => {
+                                    <h4 className="font-bold text-lg mb-4 italic">📍 Destinations</h4>
+                                    <input placeholder="Add city and press Enter..." className="input-pill" onKeyDown={e => {
                                         if(e.key === 'Enter' && e.target.value) {
                                             updateTrip({ destinations: [...(trip.destinations || []), {id: Date.now(), name: e.target.value}] });
                                             e.target.value = '';
@@ -161,33 +162,30 @@
                                     </div>
                                 </div>
                                 <div className="card p-8">
-                                    <h4 className="font-bold text-lg mb-4 text-center italic">📅 Your Availability</h4>
+                                    <h4 className="font-bold text-lg mb-4 text-center italic">📅 Availability</h4>
                                     <div className="grid grid-cols-2 gap-4">
                                         <input type="date" className="input-pill text-xs font-bold" value={trip.availability[user]?.start || ''} onChange={e => updateTrip({ availability: {...trip.availability, [user]: {...trip.availability[user], start: e.target.value}} })} />
                                         <input type="date" className="input-pill text-xs font-bold" value={trip.availability[user]?.end || ''} onChange={e => updateTrip({ availability: {...trip.availability, [user]: {...trip.availability[user], end: e.target.value}} })} />
                                     </div>
-                                    <div className="mt-8 border-t pt-6">
-                                        <p className="text-[9px] font-black text-slate-300 uppercase mb-4 text-center tracking-widest">Live Tracker</p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {trip.members.map(m => {
-                                                const isDone = trip.availability[m]?.start && trip.availability[m]?.end;
-                                                return (
-                                                    <div key={m} className={`flex justify-between items-center p-3 rounded-xl text-[11px] font-bold border ${isDone ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-300 border-slate-100'}`}>
-                                                        <span>{m}</span>
-                                                        <span>{isDone ? "READY ✅" : "PENDING"}</span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
+                                    <div className="mt-8 border-t pt-6 grid grid-cols-2 gap-2">
+                                        {trip.members.map(m => {
+                                            const isDone = trip.availability[m]?.start && trip.availability[m]?.end;
+                                            return (
+                                                <div key={m} className={`flex justify-between items-center p-3 rounded-xl text-[11px] font-bold border ${isDone ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-300 border-slate-100'}`}>
+                                                    <span>{m}</span>
+                                                    <span>{isDone ? "DONE ✅" : "PENDING"}</span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* PHASE 2: LOCATION VOTING */}
+                        {/* PHASE 2: VOTING */}
                         {trip.phase === 2 && (
                             <div className="space-y-6 animate-in fade-in">
-                                <div className="guide-bubble"><b>Phase 2: Matrix Voting.</b> Rate destinations. Individual scores are hidden during voting to prevent group-think bias. Click <b>Submit All Votes</b> when finished.</div>
+                                <div className="guide-bubble"><b>Matrix Voting.</b> Rate cities 1-5. <b>Individual scores are hidden</b> to prevent bias. You can only submit once.</div>
                                 {trip.destinations?.map(d => (
                                     <div key={d.id} className="card p-6 border-l-[12px] border-blue-600">
                                         <h4 className="text-2xl font-black italic mb-6">{d.name}</h4>
@@ -195,7 +193,7 @@
                                             {['Fun', 'Food', 'Cost', 'Weather'].map(m => (
                                                 <div key={m}>
                                                     <label className="text-[9px] font-black text-slate-400 uppercase">{m}</label>
-                                                    <select disabled={submittedVotes} className="w-full border-2 border-slate-50 rounded-xl p-2 text-xs font-bold bg-slate-50 mt-1" 
+                                                    <select disabled={hasUserVoted} className="w-full border-2 border-slate-50 rounded-xl p-2 text-xs font-bold bg-slate-50 mt-1" 
                                                         value={tempVotes[d.id]?.[m] || trip.votes?.[d.id]?.[user]?.[m] || 0} 
                                                         onChange={e => {
                                                             const v = {...tempVotes}; if(!v[d.id]) v[d.id] = {};
@@ -209,7 +207,7 @@
                                         </div>
                                     </div>
                                 ))}
-                                {!submittedVotes && (
+                                {!hasUserVoted ? (
                                     <button onClick={() => {
                                         const finalVotes = {...trip.votes};
                                         trip.destinations.forEach(d => {
@@ -217,39 +215,52 @@
                                             finalVotes[d.id][user] = tempVotes[d.id] || {};
                                         });
                                         updateTrip({ votes: finalVotes });
-                                        setSubmittedVotes(true);
-                                    }} className="w-full btn-blue bg-emerald-600 shadow-emerald-100">Submit My Votes</button>
+                                    }} className="w-full btn-blue bg-emerald-600">Submit My Final Votes</button>
+                                ) : (
+                                    <div className="text-center font-bold text-emerald-600 bg-emerald-50 p-6 rounded-3xl border-2 border-dashed border-emerald-200">✓ Your votes have been recorded. <br/><span className="text-xs font-normal">Waiting for the Leader to advance.</span></div>
                                 )}
-                                {submittedVotes && <div className="text-center font-bold text-emerald-600 bg-emerald-50 p-4 rounded-xl">✓ Your votes are locked in. Waiting for the Leader to reveal scores.</div>}
                             </div>
                         )}
 
-                        {/* PHASE 3: LOGISTICS SETUP */}
+                        {/* PHASE 3: LEADER DATE FINALIZATION */}
                         {trip.phase === 3 && (
-                            <div className="space-y-8 animate-in fade-in">
+                            <div className="space-y-6">
                                 <div className="card p-10 bg-slate-900 text-white text-center">
-                                    <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.3em] mb-2">Winning Destination</p>
+                                    <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">The Winner Is</p>
                                     <h2 className="text-5xl font-black italic">{winner?.name}</h2>
-                                    <p className="text-xs font-bold mt-4 opacity-70">Total Score: {calculateScore(winner?.id)}</p>
+                                    <p className="text-xs font-bold mt-4 opacity-70 italic">Final score reveals here: {calculateScore(winner?.id)}</p>
                                 </div>
-
-                                {/* LEADER DATE CHOICE */}
-                                <div className="card p-8 border-2 border-blue-100">
-                                    <h4 className="font-bold text-lg mb-4 italic">📅 Leader: Confirm Final Dates</h4>
-                                    <div className="guide-bubble mb-4">Optimal group overlap: <b>{overlap?.s || '...'} to {overlap?.e || '...'}</b></div>
+                                <div className="card p-8 border-2 border-blue-500 shadow-xl">
+                                    <h4 className="font-bold text-lg mb-4 italic">📅 Leader: Finalize Trip Dates</h4>
+                                    <div className="guide-bubble mb-6">Group overlap calculation: <b>{overlap?.s || '...'} to {overlap?.e || '...'}</b></div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <input type="date" disabled={!isLeader} className="input-pill text-xs font-bold" value={trip.finalDates?.s || ''} onChange={e => updateTrip({ finalDates: {...trip.finalDates, s: e.target.value} })} />
-                                        <input type="date" disabled={!isLeader} className="input-pill text-xs font-bold" value={trip.finalDates?.e || ''} onChange={e => updateTrip({ finalDates: {...trip.finalDates, e: e.target.value} })} />
+                                        <div className="text-left">
+                                            <label className="text-[10px] font-black uppercase text-slate-400">Official Start</label>
+                                            <input type="date" disabled={!isLeader} className="input-pill text-xs font-bold" value={trip.finalDates?.s || ''} onChange={e => updateTrip({ finalDates: {...trip.finalDates, s: e.target.value} })} />
+                                        </div>
+                                        <div className="text-left">
+                                            <label className="text-[10px] font-black uppercase text-slate-400">Official End</label>
+                                            <input type="date" disabled={!isLeader} className="input-pill text-xs font-bold" value={trip.finalDates?.e || ''} onChange={e => updateTrip({ finalDates: {...trip.finalDates, e: e.target.value} })} />
+                                        </div>
                                     </div>
+                                    {!isLeader && <p className="text-xs text-center mt-4 text-slate-400 italic">Leader is currently locking in the final dates...</p>}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* PHASE 4: LOGISTICS */}
+                        {trip.phase === 4 && (
+                            <div className="space-y-8 animate-in fade-in">
+                                <div className="card p-6 bg-blue-600 text-white flex justify-between items-center">
+                                    <h3 className="font-black italic text-xl uppercase tracking-tighter">{winner?.name}</h3>
+                                    <div className="text-right text-xs font-bold opacity-80">{trip.finalDates?.s} — {trip.finalDates?.e}</div>
                                 </div>
 
-                                {/* FLIGHTS */}
                                 <div className="card p-8">
-                                    <h4 className="font-bold text-lg mb-1 italic">✈️ Flight Options</h4>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-4 tracking-widest">Inputs: Option Name | Total Price</p>
+                                    <h4 className="font-bold text-lg mb-4 italic">✈️ Flight Options</h4>
                                     <div className="flex gap-2 mb-6">
-                                        <input id="fName" placeholder="Airline/Flight #" className="flex-1 input-pill text-xs" />
-                                        <input id="fPrice" placeholder="Total $" className="w-24 input-pill text-xs" />
+                                        <input id="fName" placeholder="Airline/Flight" className="flex-1 input-pill text-xs" />
+                                        <input id="fPrice" placeholder="Total Price" className="w-24 input-pill text-xs" />
                                         <button onClick={() => {
                                             const n = document.getElementById('fName'); const p = document.getElementById('fPrice');
                                             updateTrip({ logistics: {...trip.logistics, flights: [...(trip.logistics.flights || []), {id: Date.now(), name: n.value, price: p.value}]} });
@@ -258,23 +269,19 @@
                                     </div>
                                     <div className="space-y-2">
                                         {trip.logistics.flights?.map(f => (
-                                            <div key={f.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                                <span className="font-bold text-sm">{f.name} - ${f.price}</span>
-                                                <button onClick={() => updateTrip({ logVotes: {...trip.logVotes, flights: {...trip.logVotes.flights, [user]: f.id}} })} className={`px-4 py-1.5 rounded-lg text-[10px] font-black ${trip.logVotes.flights?.[user] === f.id ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border text-slate-400 uppercase'}`}>
-                                                    {trip.logVotes.flights?.[user] === f.id ? 'VOTED' : 'VOTE'}
-                                                </button>
+                                            <div key={f.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-xl border">
+                                                <span className="font-bold text-sm italic">{f.name} <span className="text-blue-500 ml-2">(${f.price})</span></span>
+                                                <button onClick={() => updateTrip({ logVotes: {...trip.logVotes, flights: {...trip.logVotes.flights, [user]: f.id}} })} className={`px-4 py-1.5 rounded-lg text-[10px] font-black ${trip.logVotes.flights?.[user] === f.id ? 'bg-blue-600 text-white' : 'bg-white border text-slate-400 uppercase'}`}>VOTE</button>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
 
-                                {/* HOTELS */}
                                 <div className="card p-8">
-                                    <h4 className="font-bold text-lg mb-1 italic">🏨 Hotel Options</h4>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-4 tracking-widest">Inputs: Hotel | Start | End | Price/Night</p>
+                                    <h4 className="font-bold text-lg mb-4 italic">🏨 Stay Options</h4>
                                     <div className="grid grid-cols-2 gap-2 mb-4">
                                         <input id="hName" placeholder="Hotel Name" className="input-pill text-xs" />
-                                        <input id="hPrice" placeholder="Price / Night" className="input-pill text-xs" />
+                                        <input id="hPrice" placeholder="$/Night" className="input-pill text-xs" />
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 mb-4">
                                         <input id="hStart" type="date" className="input-pill text-xs" />
@@ -285,63 +292,53 @@
                                         const s = document.getElementById('hStart'); const e = document.getElementById('hEnd');
                                         updateTrip({ logistics: {...trip.logistics, hotels: [...(trip.logistics.hotels || []), {id: Date.now(), name: n.value, price: p.value, s: s.value, e: e.value}]} });
                                         n.value=''; p.value=''; s.value=''; e.value='';
-                                    }} className="w-full btn-blue py-2 text-xs">+ Add Hotel Option</button>
-                                    
+                                    }} className="w-full btn-blue py-2 text-xs">Add Stay</button>
                                     <div className="space-y-2 mt-6">
-                                        {trip.logistics.hotels?.map(h => {
-                                            const coversFull = h.s <= trip.finalDates?.s && h.e >= trip.finalDates?.e;
-                                            return (
-                                                <div key={h.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                                    <div className="flex justify-between items-center mb-2">
-                                                        <span className="font-bold text-sm italic">{h.name}</span>
-                                                        <span className="text-xs font-black text-blue-600">${h.price}/night</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-end">
-                                                        <div className="text-[10px] text-slate-400 font-bold">Window: {h.s} to {h.e}</div>
-                                                        <button onClick={() => updateTrip({ logVotes: {...trip.logVotes, hotels: {...trip.logVotes.hotels, [user]: h.id}} })} className={`px-4 py-1.5 rounded-lg text-[10px] font-black ${trip.logVotes.hotels?.[user] === h.id ? 'bg-blue-600 text-white' : 'bg-white border text-slate-400 uppercase'}`}>
-                                                            {trip.logVotes.hotels?.[user] === h.id ? 'VOTED' : 'VOTE'}
-                                                        </button>
-                                                    </div>
-                                                    {!coversFull && <p className="text-[8px] text-red-500 font-black mt-2 uppercase tracking-widest">⚠️ Note: Does not cover full trip range</p>}
+                                        {trip.logistics.hotels?.map(h => (
+                                            <div key={h.id} className="p-4 bg-slate-50 rounded-2xl border">
+                                                <div className="flex justify-between mb-1 font-bold text-sm italic">
+                                                    <span>{h.name}</span>
+                                                    <span className="text-blue-600">${h.price}/nt</span>
                                                 </div>
-                                            );
-                                        })}
+                                                <div className="flex justify-between items-end">
+                                                    <span className="text-[10px] text-slate-400">Available: {h.s} to {h.e}</span>
+                                                    <button onClick={() => updateTrip({ logVotes: {...trip.logVotes, hotels: {...trip.logVotes.hotels, [user]: h.id}} })} className={`px-4 py-1.5 rounded-lg text-[10px] font-black ${trip.logVotes.hotels?.[user] === h.id ? 'bg-blue-600 text-white' : 'bg-white border text-slate-400 uppercase'}`}>VOTE</button>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* PHASE 4: FINAL ITINERARY */}
-                        {trip.phase === 4 && (
+                        {/* PHASE 5: FINAL ITINERARY */}
+                        {trip.phase === 5 && (
                             <div className="card overflow-hidden text-center shadow-2xl animate-in zoom-in-95 duration-1000">
                                 <div className="p-12 bg-slate-950 text-white">
-                                    <div className="inline-block px-4 py-1 bg-blue-500 rounded-full text-[9px] font-black tracking-widest mb-4">OFFICIALLY CONFIRMED</div>
-                                    <h2 className="text-6xl font-black italic tracking-tighter text-white mb-2">{winner?.name}</h2>
+                                    <div className="inline-block px-4 py-1 bg-blue-500 rounded-full text-[9px] font-black tracking-widest mb-4 uppercase">Itinerary Ready</div>
+                                    <h2 className="text-6xl font-black italic tracking-tighter mb-2">{winner?.name}</h2>
                                     <p className="text-slate-500 text-xs font-black uppercase tracking-[0.4em]">{trip.finalDates?.s} — {trip.finalDates?.e}</p>
                                 </div>
-                                <div className="p-10 grid md:grid-cols-2 gap-8 text-left bg-white">
-                                    <div className="p-6 bg-slate-50 rounded-3xl border-2 border-slate-100">
-                                        <p className="text-[10px] font-black text-blue-500 uppercase mb-2">Primary Flight</p>
-                                        <p className="text-xl font-bold">{trip.logistics.flights?.find(f => f.id === Object.values(trip.logVotes.flights || {})[0])?.name || 'Manual Selection Needed'}</p>
+                                <div className="p-10 grid md:grid-cols-2 gap-8 text-left bg-white border-b">
+                                    <div className="p-6 bg-slate-50 rounded-3xl border">
+                                        <p className="text-[10px] font-black text-blue-500 uppercase mb-2">Lodging Confirmed</p>
+                                        <p className="text-lg font-bold italic">{trip.logistics.hotels?.find(h => h.id === Object.values(trip.logVotes.hotels || {})[0])?.name || 'Manual Choice'}</p>
                                     </div>
-                                    <div className="p-6 bg-slate-50 rounded-3xl border-2 border-slate-100">
-                                        <p className="text-[10px] font-black text-blue-500 uppercase mb-2">Lodging</p>
-                                        <p className="text-xl font-bold">{trip.logistics.hotels?.find(h => h.id === Object.values(trip.logVotes.hotels || {})[0])?.name || 'Manual Selection Needed'}</p>
+                                    <div className="p-6 bg-slate-50 rounded-3xl border">
+                                        <p className="text-[10px] font-black text-blue-500 uppercase mb-2">Flight Option</p>
+                                        <p className="text-lg font-bold italic">{trip.logistics.flights?.find(f => f.id === Object.values(trip.logVotes.flights || {})[0])?.name || 'Manual Choice'}</p>
                                     </div>
                                 </div>
-                                <div className="p-8 border-t bg-slate-50 flex justify-center flex-wrap gap-2">
-                                    {trip.members.map(m => <span key={m} className="bg-slate-900 text-white px-3 py-1 rounded-full text-[10px] font-black">👤 {m}</span>)}
-                                </div>
-                                <button onClick={() => window.print()} className="mb-10 mt-4 text-[10px] font-black text-slate-300 hover:text-blue-600 transition-colors uppercase tracking-widest tracking-[0.3em]">Generate Trip PDF</button>
+                                <button onClick={() => window.print()} className="mb-10 mt-8 text-[10px] font-black text-slate-300 hover:text-blue-600 uppercase tracking-[0.3em]">Download Trip PDF</button>
                             </div>
                         )}
                     </main>
 
-                    {/* COMMAND CENTER (Fixed Footer) */}
+                    {/* COMMAND CENTER */}
                     <div className="fixed bottom-0 left-0 right-0 bg-white border-t-8 border-blue-600 p-6 shadow-2xl z-50">
                         <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-center gap-6">
                             <div className="flex-1 text-left overflow-hidden">
-                                <p className="text-[9px] font-black text-blue-500 uppercase mb-1 tracking-widest">Shared Trip Link</p>
+                                <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1">Shared Project URL</p>
                                 <input readOnly value={window.location.href} className="text-xs w-full font-mono text-slate-400 bg-transparent outline-none cursor-pointer truncate" onClick={e => {e.target.select(); document.execCommand('copy'); alert('Link copied!'); }} />
                             </div>
                             {isLeader ? (
@@ -352,7 +349,7 @@
                             ) : (
                                 <div className="bg-blue-50 border-2 border-blue-100 p-4 rounded-2xl text-left">
                                     <p className="text-[10px] font-black text-blue-600 uppercase mb-0.5">MEMBER VIEW</p>
-                                    <p className="text-[11px] text-blue-800 italic font-medium">Wait for Leader ({trip.leader}) to advance the stage.</p>
+                                    <p className="text-[11px] text-blue-800 italic font-medium leading-none">Wait for Leader ({trip.leader}) to advance to Phase {trip.phase + 1}.</p>
                                 </div>
                             )}
                         </div>
